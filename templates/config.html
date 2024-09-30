@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Config</title>
+</head>
+<body>
+    <h1>MQTT Configuration</h1>
+    <form method="POST">
+        <label for="MQTT_BROKER">MQTT Broker:</label>
+        <input type="text" id="MQTT_BROKER" name="MQTT_BROKER" value="{{ config['MQTT_BROKER'] }}" required><br><br>
+
+        <label for="MQTT_BROKER_USERNAME">MQTT Broker Username:</label>
+        <input type="text" id="MQTT_BROKER_USERNAME" name="MQTT_BROKER_USERNAME" value="{{ config['MQTT_BROKER_USERNAME'] }}"><br><br>
+
+        <label for="MQTT_BROKER_PASSWORD">MQTT Broker Password:</label>
+        <input type="password" id="MQTT_BROKER_PASSWORD" name="MQTT_BROKER_PASSWORD" value="{{ config['MQTT_BROKER_PASSWORD'] }}"><br><br>
+
+        <label for="BAMBU_DEVICE_ID">Bambu Device ID:</label>
+        <input type="text" id="BAMBU_DEVICE_ID" name="BAMBU_DEVICE_ID" value="{{ config['BAMBU_DEVICE_ID'] }}" required><br><br>
+
+        <label for="BAMBU_REGION">Bambu Region:</label>
+        <select id="BAMBU_REGION" name="BAMBU_REGION">
+            <option value="local" {% if config['BAMBU_REGION'] == 'local' %}selected{% endif %}>local</option>
+            <option value="China" {% if config['BAMBU_REGION'] == 'China' %}selected{% endif %}>China</option>
+            <option value="Rest of the World" {% if config['BAMBU_REGION'] == 'Rest of the World' %}selected{% endif %}>Rest of the World</option>
+        </select><br><br>
+
+        <label for="LOG_LEVEL">Log Level:</label>
+        <select id="LOG_LEVEL" name="LOG_LEVEL">
+            <option value="DEBUG" {% if config['LOG_LEVEL'] == 'DEBUG' %}selected{% endif %}>DEBUG</option>
+            <option value="INFO" {% if config['LOG_LEVEL'] == 'INFO' %}selected{% endif %}>INFO</option>
+            <option value="WARNING" {% if config['LOG_LEVEL'] == 'WARNING' %}selected{% endif %}>WARNING</option>
+            <option value="ERROR" {% if config['LOG_LEVEL'] == 'ERROR' %}selected{% endif %}>ERROR</option>
+            <option value="CRITICAL" {% if config['LOG_LEVEL'] == 'CRITICAL' %}selected{% endif %}>CRITICAL</option>
+        </select><br><br>
+
+        <button type="submit">Save Configuration</button>
+    </form>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Config</title>
+</head>
+<body>
+    <h1>Set Filament</h1>
+    <form method="POST">
+        <label for="filament_id">Filament ID:</label>
+        <input type="text" id="filament_id" name="filament_id" value="" required><br><br>
+
+        <label for="filament_name">Filament Name:</label>
+        <input type="text" id="filament_name" name="filament_name" value="" required><br><br>
+
+        <label for="filament_color">Filament color (RRGGBBAA):</label>
+        <input type="text" id="filament_color" name="filament_color" value="" required><br><br>
+
+        <label for="tray_id">Tray ID (1-4, 0=lowest empty tray):</label>
+        <input type="text" id="tray_id" name="tray_id" value="0" required><br><br>
+
+        <label for="nozzle_temp_min">Nozzle Temp min:</label>
+        <input type="text" id="nozzle_temp_min" name="nozzle_temp_min" value="" required><br><br>
+
+        <label for="nozzle_temp_max">Nozzle Temp max:</label>
+        <input type="text" id="nozzle_temp_max" name="nozzle_temp_max" value="" required><br><br>
+
+        <button type="submit">Set Filament</button>
+    </form>
+</body>
+</html>
