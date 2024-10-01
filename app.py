@@ -63,31 +63,6 @@ def index():
     return redirect(url_for('login'))
 
 
-@app.route('/config', methods=['GET', 'POST'])
-def config_route():
-    """Route, um die Konfiguration zu laden oder zu ändern."""
-    if request.method == 'GET':
-        config = load_config()
-        return render_template('config.html', config=config)
-    elif request.method == 'POST':
-        config = load_config()
-        config['MQTT_BROKER_URL'] = request.form['MQTT_BROKER']
-        config['MQTT_BROKER_USERNAME'] = request.form['MQTT_BROKER_USERNAME']
-        config['MQTT_BROKER_PASSWORD'] = request.form['MQTT_BROKER_PASSWORD']
-        config['BAMBU_DEVICE_ID'] = request.form['BAMBU_DEVICE_ID']
-        config['BAMBU_REGION'] = request.form['BAMBU_REGION']
-        config['LOG_LEVEL'] = request.form['LOG_LEVEL'].upper()
-        save_config(config)
-
-        logging.getLogger().setLevel(getattr(logging, config['LOG_LEVEL']))
-
-        app.config['MQTT_BROKER_URL'] = config['MQTT_BROKER_URL']
-        app.config['MQTT_USERNAME'] = config['MQTT_BROKER_USERNAME']
-        app.config['MQTT_PASSWORD'] = config['MQTT_BROKER_PASSWORD']
-
-        return redirect(url_for('config_route'))
-
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -113,9 +88,6 @@ def login():
                 config['MQTT_BROKER_USERNAME'] = json.loads(b64decode(payload))['username']
                 config['MQTT_BROKER_PASSWORD'] = token
 
-                update_devices()
-                update_filament_settings()
-
         save_config(config)
         app.config['MQTT_BROKER_URL'] = config['MQTT_BROKER_URL']
         app.config['MQTT_BROKER_USERNAME'] = config['MQTT_BROKER_USERNAME']
@@ -131,9 +103,7 @@ def set_ams_filament():
         filament_id = request.form['filament_id']
         color = request.form['filament_color']
         tray_id = int(request.form['tray_id'])
-        filament_name = request.form['filament_name']
-        nozzle_temp_min = int(request.form['nozzle_temp_min'])
-        nozzle_temp_max = int(request.form['nozzle_temp_max'])
+        filament_setting = get_slicer_setting(config['BAMBU_FILAMENT_LIST'][filament_id]['setting_id'])
 
         if tray_id == 0 and config['BAMBU_EMPTY_TRAY_ID'] > 0:
             tray_id = config['BAMBU_EMPTY_TRAY_ID']
@@ -146,20 +116,19 @@ def set_ams_filament():
                 "tray_id": int(tray_id),
                 "tray_info_idx": filament_id,
                 "tray_color": color.upper(),
-                "nozzle_temp_min": int(nozzle_temp_min),
-                "nozzle_temp_max": int(nozzle_temp_max),
-                "tray_type": filament_name,
+                "nozzle_temp_min": int(filament_setting['setting']['nozzle_temperature_range_low'][0]),
+                "nozzle_temp_max": int(filament_setting['setting']['nozzle_temperature_range_high'][0]),
+                "tray_type": filament_setting['setting']['filament_type'][0],
             }
         }
         publish_request(payload)
         return payload
 
-    return render_template('set_filament.html')
+    return render_template('set_filament.html', filament_list=config['BAMBU_FILAMENT_LIST'])
 
 
 @mqtt.on_connect()
 def handle_connect(client, userdata, flags, rc):
-    """Callback, wenn die MQTT-Verbindung hergestellt wurde."""
     if rc == 0:
         logging.info("Connected to MQTT broker successfully")
         bambu_device_id = config['BAMBU_DEVICES'][config['BAMBU_DEVICE_ID']]['dev_id']
@@ -173,10 +142,8 @@ def handle_connect(client, userdata, flags, rc):
 
 
 @mqtt.on_disconnect()
-def handle_disconnect(client, userdata, rc):
-    """Callback, wenn die MQTT-Verbindung unterbrochen wurde."""
-    if rc != 0:
-        logging.warning(f"Disconnected from MQTT broker.")
+def handle_disconnect():
+    logging.warning(f"Disconnected from MQTT broker.")
 
 
 @mqtt.on_message()
@@ -219,6 +186,9 @@ def update_filament_settings():
 
     config['BAMBU_FILAMENT_LIST'] = filament_list
 
+def get_slicer_setting(setting_id):
+    return bambu_request('setting', f'/iot-service/api/slicer/setting/{setting_id}')
+
 def publish_request(payload):
     bambu_device_id = config['BAMBU_DEVICES'][config['BAMBU_DEVICE_ID']]['dev_id']
     topic = f"device/{bambu_device_id}/request"
@@ -232,6 +202,8 @@ def update_status():
         }
     }
     publish_request(payload)
+    update_devices()
+    update_filament_settings()
     Timer(10, update_status).start()
 
 

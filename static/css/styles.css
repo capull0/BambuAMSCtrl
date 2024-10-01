@@ -1,0 +1,75 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f5f1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #ffffff;
+    border: 2px solid #94c755;
+    border-radius: 15px;
+    padding: 40px;
+    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.box {
+    width: 300px
+}
+
+h1 {
+    text-align: center;
+    color: #94c755;
+    margin-bottom: 30px;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+}
+
+label {
+    margin-bottom: 8px;
+    color: #2e5631;
+}
+
+input, select {
+    padding: 10px;
+    margin-bottom: 20px;
+    border: 1px solid #94c755;
+    border-radius: 5px;
+    outline: none;
+}
+
+input:focus, select:focus {
+    border-color: #2e5631;
+}
+
+button {
+    background-color: #94c755;
+    color: white;
+    padding: 12px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+button:hover {
+    background-color: #2e5631;
+}
+
+#ipAddressField {
+    display: none;
+}
