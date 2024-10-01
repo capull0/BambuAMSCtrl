@@ -11,22 +11,30 @@
         <div class="box">
             <h1>Login</h1>
             <form id="loginForm" method="POST">
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" placeholder="Enter your email" required>
-
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" placeholder="Enter your password" required>
-
                 <label for="region">Region:</label>
                 <select id="region" name="region" required>
                     <option value="Local">Local</option>
-                    <option value="China">China</option>
-                    <option value="Rest of the World">Rest of the World</option>
+                    <option value="Asia-Pacific">Asia-Pacific</option>
+                    <option value="Chinese Mainland">Chinese Mainland</option>
+                    <option value="Europe">Europe</option>
+                    <option value="North Amcerica">North America</option>
+                    <option value="Others">Others</option>
                 </select>
 
-                <label for="ipAddress">IP Address:</label>
-                <input type="text" id="ipAddress" name="ipAddress" placeholder="Enter IP address">
+                <div id="CloudLogin">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" placeholder="Enter your email" required>
 
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" name="password" placeholder="Enter your password" required>
+                </div>
+                <div id="LocalLogin">
+                    <label for="ipAddress">IP address:</label>
+                    <input type="text" id="ipAddress" name="ipAddress" placeholder="Enter IP address">
+
+                    <label for="accesscode">Access code:</label>
+                    <input type="text" id="accesscode" name="accesscode" placeholder="Enter the access code">
+                </div>
                 <button type="submit">Login</button>
             </form>
         </div>
@@ -34,20 +42,22 @@
 
     <script>
         const regionSelect = document.getElementById("region");
-        const ipAddressInput = document.getElementById("ipAddress");
+        const cloudLogin = document.getElementById("CloudLogin");
+        const localLogin = document.getElementById("LocalLogin");
 
-        function toggleIpAddressField() {
+        function toggleLoginField() {
             if (regionSelect.value === "Local") {
-                ipAddressInput.disabled = false;
+                cloudLogin.style.display = "none";
+                localLogin.style.display = "block";
             } else {
-                ipAddressInput.disabled = true;
-                ipAddressInput.value = "";
+                cloudLogin.style.display = "block";
+                localLogin.style.display = "none";
             }
         }
 
-        toggleIpAddressField();
+        toggleLoginField();
 
-        regionSelect.addEventListener("change", toggleIpAddressField);
+        regionSelect.addEventListener("change", toggleLoginField);
     </script>
 </body>
 </html>

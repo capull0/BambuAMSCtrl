@@ -16,16 +16,18 @@
                     {%  for filament_id, data in filament_list.items() %}
                     <option value="{{ filament_id }}">{{ data['name'] }}</option>
                     {% endfor %}
-                </select><br>
+                </select>
                 <label for="selected_filament_id">Selected Filament ID:</label>
                 <div id="selected_filament_id"></div>
-                <br><br>
+                <br>
+                <label for="qr-code">QR-Code:</label>
+                <img src="" id="qr-code" alt="QR Code" />
 
                 <label for="filament_color">Filament color (RRGGBBAA):</label>
-                <input type="text" id="filament_color" name="filament_color" value="" required><br><br>
+                <input type="text" id="filament_color" name="filament_color" value="000000FF" required>
 
                 <label for="tray_id">Tray ID (1-4, 0=lowest empty tray):</label>
-                <input type="text" id="tray_id" name="tray_id" value="0" required><br><br>
+                <input type="text" id="tray_id" name="tray_id" value="0" required>
 
                 <button type="submit">Set Filament</button>
             </form>
@@ -34,13 +36,20 @@
     <script>
     const selectElement = document.getElementById('filament_id');
     const valueDisplay = document.getElementById('selected_filament_id');
+    const colorElement = document.getElementById('filament_color');
+    const imgElement = document.getElementById('qr-code')
 
     function updateFilamentID() {
         valueDisplay.textContent = selectElement.value;
+        loadQRCode(selectElement.value, colorElement.value)
     }
 
     selectElement.addEventListener('change', updateFilamentID);
+    colorElement.addEventListener('change', updateFilamentID);
 
+    function loadQRCode(filament_id, filament_color) {
+        imgElement.src = '/api/qr-code?filament_id='+filament_id+'&filament_color='+filament_color;
+    }
     updateFilamentID();
 </script>
 </body>

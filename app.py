@@ -1,12 +1,14 @@
 import os
 import json
 import logging
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, send_file
 from flask_mqtt import Mqtt
 import requests
 from base64 import b64decode
 import ssl
 from threading import Timer
+import io
+import qrcode
 
 log_file = 'application.log'
 logging.basicConfig(filename=log_file, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -21,6 +23,8 @@ default_config = {
     "BAMBU_DEVICES": {},
     "BAMBU_DEVICE_ID": 0,
     "BAMBU_API_URL": 'https://api.bambulab.com/v1',
+    "BAMBU_ACCESS_TOKEN": "",
+    "BAMBU_REFRESH_TOKEN": "",
     "BAMBU_EMPTY_TRAY_ID": 0,
     "LOG_LEVEL": "DEBUG"
 }
@@ -58,6 +62,7 @@ app.config['MQTT_TLS_CERT_REQS'] = ssl.CERT_NONE
 
 mqtt = Mqtt(app, connect_async=True)
 
+
 @app.route('/')
 def index():
     return redirect(url_for('login'))
@@ -73,26 +78,32 @@ def login():
 
         if region == 'local':
             config['MQTT_BROKER_URL'] = request.form['ip']
+            config['MQTT_BROKER_USERNAME'] = "bblp"
+            config['MQTT_BROKER_PASSWORD'] = request.form['accesscode']
         else:
-            config['MQTT_BROKER_URL'] = 'cn.mqtt.bambulab.com' if region == 'China' else 'us.mqtt.bambulab.com'
-            config['BAMBU_API_URL'] = 'https://api.bambulab.cn/v1' if region == 'China' else 'https://api.bambulab.com/v1'
+            config['MQTT_BROKER_URL'] = 'cn.mqtt.bambulab.com' if region == 'Chinese Mainland' else 'us.mqtt.bambulab.com'
+            config['BAMBU_API_URL'] = 'https://api.bambulab.cn/v1' if region == 'Chinese Mainland' else 'https://api.bambulab.com/v1'
             credentials = {'account': email, 'password': password}
             res = requests.post(f'{config['BAMBU_API_URL']}/user-service/user/login', json=credentials, timeout=10)
             if not res.ok:
                 logging.error(f'login failed({res.status_code}): {res.text}')
                 return "failed"
             else:
-                token = res.json()['accessToken']
-                payload = token.split('.')[1]
+                config['BAMBU_ACCESS_TOKEN'] = res.json()['accessToken']
+                config['BAMBU_REFRESH_TOKEN'] = res.json()['refreshToken']
+                payload = config['BAMBU_ACCESS_TOKEN'].split('.')[1]
                 payload += '=' * ((4 - len(payload) % 4) % 4)
                 config['MQTT_BROKER_USERNAME'] = json.loads(b64decode(payload))['username']
-                config['MQTT_BROKER_PASSWORD'] = token
+                config['MQTT_BROKER_PASSWORD'] = config['BAMBU_ACCESS_TOKEN']
 
-        save_config(config)
         app.config['MQTT_BROKER_URL'] = config['MQTT_BROKER_URL']
         app.config['MQTT_BROKER_USERNAME'] = config['MQTT_BROKER_USERNAME']
         app.config['MQTT_BROKER_PASSWORD'] = config['MQTT_BROKER_PASSWORD']
-        return "success"
+        update_devices()
+        update_filament_settings()
+        save_config(config)
+
+        return redirect(url_for('set_ams_filament'))
 
     return render_template('login.html')
 
@@ -109,22 +120,38 @@ def set_ams_filament():
             tray_id = config['BAMBU_EMPTY_TRAY_ID']
         tray_id -= 1
 
+        if config['BAMBU_FILAMENT_LIST'][filament_id]['private']:
+            nozzle_temp_min = config['BAMBU_FILAMENT_LIST'][filament_id]['nozzle_temperature'][0]
+            nozzle_temp_max = config['BAMBU_FILAMENT_LIST'][filament_id]['nozzle_temperature'][1]
+            filament_type = config['BAMBU_FILAMENT_LIST'][filament_id]['filament_type']
+        else:
+            nozzle_temp_min = int(filament_setting['setting']['nozzle_temperature_range_low'][0])
+            nozzle_temp_max = int(filament_setting['setting']['nozzle_temperature_range_high'][0])
+            filament_type = filament_setting['setting']['filament_type'][0]
         payload = {
             "print": {
                 "command": "ams_filament_setting",
-                "ams_id": 0, # hardcoded ams_id = 0
+                "ams_id": 0,  # hardcoded ams_id = 0
                 "tray_id": int(tray_id),
                 "tray_info_idx": filament_id,
                 "tray_color": color.upper(),
-                "nozzle_temp_min": int(filament_setting['setting']['nozzle_temperature_range_low'][0]),
-                "nozzle_temp_max": int(filament_setting['setting']['nozzle_temperature_range_high'][0]),
-                "tray_type": filament_setting['setting']['filament_type'][0],
+                "nozzle_temp_min": nozzle_temp_min,
+                "nozzle_temp_max": nozzle_temp_max,
+                "tray_type": filament_type,
             }
         }
         publish_request(payload)
         return payload
 
     return render_template('set_filament.html', filament_list=config['BAMBU_FILAMENT_LIST'])
+
+
+@app.route('/api/qr-code', methods=['GET'])
+def generate_qr():
+    filament_id = request.args.get('filament_id')
+    filament_color = request.args.get('filament_color')
+    data = {'id': filament_id, 'color': filament_color}
+    return send_file(dict_to_qr_code(data), mimetype='image/png')
 
 
 @mqtt.on_connect()
@@ -152,7 +179,7 @@ def handle_mqtt_message(client, userdata, message):
     if "print" in msg:
         data = msg['print']
         if "ams" in data:
-            for tray in data['ams']['ams'][0]['tray']: # hardcoded ams_id = 0
+            for tray in data['ams']['ams'][0]['tray']:  # hardcoded ams_id = 0
                 if 'tray_info_idx' not in tray:
                     config['BAMBU_EMPTY_TRAY_ID'] = int(tray['id']) + 1
                     save_config(config)
@@ -170,8 +197,10 @@ def bambu_request(type, uri):
 
     return res.json()
 
+
 def update_devices():
     config['BAMBU_DEVICES'] = bambu_request('devices', '/iot-service/api/user/bind')['devices']
+
 
 def update_filament_settings():
     slicer_version = bambu_request('resource', '/iot-service/api/slicer/resource')['software']['version']
@@ -186,14 +215,17 @@ def update_filament_settings():
 
     config['BAMBU_FILAMENT_LIST'] = filament_list
 
+
 def get_slicer_setting(setting_id):
     return bambu_request('setting', f'/iot-service/api/slicer/setting/{setting_id}')
+
 
 def publish_request(payload):
     bambu_device_id = config['BAMBU_DEVICES'][config['BAMBU_DEVICE_ID']]['dev_id']
     topic = f"device/{bambu_device_id}/request"
     (res, id) = mqtt.publish(topic, json.dumps(payload))
     return id
+
 
 def update_status():
     payload = {
@@ -206,6 +238,23 @@ def update_status():
     update_filament_settings()
     Timer(10, update_status).start()
 
+def dict_to_qr_code(data):
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=1,
+    )
+    qr.add_data(json.dumps(data))
+    qr.make(fit=True)
+
+    img = qr.make_image(fill='black', back_color='white')
+
+    img_io = io.BytesIO()
+    img.save(img_io, 'PNG')
+    img_io.seek(0)
+
+    return img_io
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
