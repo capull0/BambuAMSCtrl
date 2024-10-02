@@ -3,12 +3,14 @@ import json
 import logging
 from flask import Flask, render_template, request, redirect, url_for, send_file
 from flask_mqtt import Mqtt
+from flask_serial import Serial
 import requests
 from base64 import b64decode
 import ssl
 from threading import Timer
 import io
 import qrcode
+from serial.tools import list_ports
 
 log_file = 'application.log'
 logging.basicConfig(filename=log_file, level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -26,7 +28,10 @@ default_config = {
     "BAMBU_ACCESS_TOKEN": "",
     "BAMBU_REFRESH_TOKEN": "",
     "BAMBU_EMPTY_TRAY_ID": 0,
-    "LOG_LEVEL": "DEBUG"
+    'SERIAL_BAUDRATE': 9600,
+    'SERIAL_TIMEOUT': 10,
+    'SERIAL_PORT': "disabled",
+    "LOG_LEVEL": "INFO"
 }
 
 app = Flask(__name__)
@@ -60,7 +65,27 @@ app.config['MQTT_TLS_INSECURE'] = False
 app.config['MQTT_TLS_VERSION'] = ssl.PROTOCOL_TLS
 app.config['MQTT_TLS_CERT_REQS'] = ssl.CERT_NONE
 
+if config['SERIAL_PORT'] != 'disabled':
+    app.config['SERIAL_PORT'] = config['SERIAL_PORT']
+    app.config['SERIAL_BAUDRATE'] = int(config['SERIAL_BAUDRATE'])
+    app.config['SERIAL_TIMEOUT'] = int(config['SERIAL_TIMEOUT'])
+    app.config['SERIAL_BYTESIZE'] = 8
+    app.config['SERIAL_PARITY'] = 'N'
+    app.config['SERIAL_STOPBITS'] = 1
+
+    ser = Serial(app)
+    @ser.on_message()
+    def handle_message(message):
+        try:
+            json_string = message.decode('utf-8').strip()
+            data = json.loads(json_string)
+            logging.debug(f'SERIAL: received message: {data}')
+        except json.JSONDecodeError:
+            logging.warning(f'SERIAL: received invalid JSON: {message}')
+        set_ams_filament(data['id'], data['color'], 0)
+
 mqtt = Mqtt(app, connect_async=True)
+mqtt_connected = False
 
 
 @app.route('/')
@@ -109,38 +134,17 @@ def login():
 
 
 @app.route('/set_filament', methods=['GET', 'POST'])
-def set_ams_filament():
+def set_filament():
+    global mqtt_connected
+    if not mqtt_connected and 'BAMBU_FILAMENT_LIST' not in config:
+        return redirect(url_for('login'))
+
     if request.method == 'POST':
         filament_id = request.form['filament_id']
         color = request.form['filament_color']
         tray_id = int(request.form['tray_id'])
-        filament_setting = get_slicer_setting(config['BAMBU_FILAMENT_LIST'][filament_id]['setting_id'])
 
-        if tray_id == 0 and config['BAMBU_EMPTY_TRAY_ID'] > 0:
-            tray_id = config['BAMBU_EMPTY_TRAY_ID']
-        tray_id -= 1
-
-        if config['BAMBU_FILAMENT_LIST'][filament_id]['private']:
-            nozzle_temp_min = config['BAMBU_FILAMENT_LIST'][filament_id]['nozzle_temperature'][0]
-            nozzle_temp_max = config['BAMBU_FILAMENT_LIST'][filament_id]['nozzle_temperature'][1]
-            filament_type = config['BAMBU_FILAMENT_LIST'][filament_id]['filament_type']
-        else:
-            nozzle_temp_min = int(filament_setting['setting']['nozzle_temperature_range_low'][0])
-            nozzle_temp_max = int(filament_setting['setting']['nozzle_temperature_range_high'][0])
-            filament_type = filament_setting['setting']['filament_type'][0]
-        payload = {
-            "print": {
-                "command": "ams_filament_setting",
-                "ams_id": 0,  # hardcoded ams_id = 0
-                "tray_id": int(tray_id),
-                "tray_info_idx": filament_id,
-                "tray_color": color.upper(),
-                "nozzle_temp_min": nozzle_temp_min,
-                "nozzle_temp_max": nozzle_temp_max,
-                "tray_type": filament_type,
-            }
-        }
-        publish_request(payload)
+        payload = set_ams_filament(filament_id, color, tray_id)
         return payload
 
     return render_template('set_filament.html', filament_list=config['BAMBU_FILAMENT_LIST'])
@@ -154,8 +158,34 @@ def generate_qr():
     return send_file(dict_to_qr_code(data), mimetype='image/png')
 
 
+@app.route('/serial', methods=['GET', 'POST'])
+def serial_config():
+    msg = ""
+    if request.method == 'POST':
+        config['SERIAL_PORT'] = request.form['serial_port']
+        config['SERIAL_BAUDRATE'] = request.form['baudrate']
+        config['SERIAL_TIMEOUT'] = request.form['timeout']
+
+        save_config(config)
+
+        msg = "configuration stored..."
+
+    ports = list_ports.comports()
+    serial_devices = [('disabled', 'n/a', '')]
+    for port in ports:
+        if config['SERIAL_PORT'] == port.device:
+            selected = " selected"
+        else:
+            selected = ""
+        serial_devices.append((port.device, port.description, selected))
+    return render_template('serial.html', serial_devices=serial_devices,
+                           enabled=config['SERIAL_ENABLED'], baudrate=config['SERIAL_BAUDRATE'],
+                           timeout=config['SERIAL_TIMEOUT'], msg=msg)
+
+
 @mqtt.on_connect()
 def handle_connect(client, userdata, flags, rc):
+    global mqtt_connected
     if rc == 0:
         logging.info("Connected to MQTT broker successfully")
         bambu_device_id = config['BAMBU_DEVICES'][config['BAMBU_DEVICE_ID']]['dev_id']
@@ -164,27 +194,65 @@ def handle_connect(client, userdata, flags, rc):
         logging.info(f"Subscribed to {topic}")
 
         update_status()
+        mqtt_connected = True
     else:
         logging.error(f"Failed to connect with result code {rc}.")
+        mqtt_connected = False
 
 
 @mqtt.on_disconnect()
 def handle_disconnect():
     logging.warning(f"Disconnected from MQTT broker.")
+    mqtt_connected = False
 
 
 @mqtt.on_message()
 def handle_mqtt_message(client, userdata, message):
     msg = json.loads(message.payload.decode("utf-8"))
+    found_empty_tray = False
     if "print" in msg:
         data = msg['print']
-        if "ams" in data:
+        if "ams" in data and "ams" in data['ams']:
             for tray in data['ams']['ams'][0]['tray']:  # hardcoded ams_id = 0
                 if 'tray_info_idx' not in tray:
                     config['BAMBU_EMPTY_TRAY_ID'] = int(tray['id']) + 1
-                    save_config(config)
+                    found_empty_tray = True
                     break
+            if not found_empty_tray:
+                config['BAMBU_EMPTY_TRAY_ID'] = 0
+            save_config(config)
 
+
+def set_ams_filament(filament_id, color, tray_id):
+    filament_setting = get_slicer_setting(config['BAMBU_FILAMENT_LIST'][filament_id]['setting_id'])
+
+    if tray_id == 0 and config['BAMBU_EMPTY_TRAY_ID'] > 0:
+        tray_id = config['BAMBU_EMPTY_TRAY_ID']
+    tray_id -= 1
+
+    if config['BAMBU_FILAMENT_LIST'][filament_id]['private']:
+        nozzle_temp_min = config['BAMBU_FILAMENT_LIST'][filament_id]['nozzle_temperature'][0]
+        nozzle_temp_max = config['BAMBU_FILAMENT_LIST'][filament_id]['nozzle_temperature'][1]
+        filament_type = config['BAMBU_FILAMENT_LIST'][filament_id]['filament_type']
+    else:
+        nozzle_temp_min = int(filament_setting['setting']['nozzle_temperature_range_low'][0])
+        nozzle_temp_max = int(filament_setting['setting']['nozzle_temperature_range_high'][0])
+        filament_type = filament_setting['setting']['filament_type'][0]
+    payload = {
+        "print": {
+            "sequence_id": 0,
+            "command": "ams_filament_setting",
+            "ams_id": 0,  # hardcoded ams_id = 0
+            "tray_id": int(tray_id),
+            "tray_info_idx": filament_id,
+            "tray_color": color.upper(),
+            "nozzle_temp_min": nozzle_temp_min,
+            "nozzle_temp_max": nozzle_temp_max,
+            "tray_type": filament_type,
+        }
+    }
+    publish_request(payload)
+    return payload
 
 def bambu_request(type, uri):
     headers = {'Authorization': 'Bearer ' + config['MQTT_BROKER_PASSWORD']}
@@ -192,8 +260,8 @@ def bambu_request(type, uri):
     if not res.ok:
         logging.error(f'Request {uri} failed{res.status_code}): {res.text}')
         return None
-    with open(f"debug_{type}.json", 'w') as file:
-        json.dump(res.json(), file, indent=4)
+    #with open(f"debug_{type}.json", 'w') as file:
+    #    json.dump(res.json(), file, indent=4)
 
     return res.json()
 

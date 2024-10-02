@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static',filename='css/styles.css') }}">
+    <title>Serial Configuration</title>
+</head>
+<body>
+    <div class="container">
+        <div class="box">
+            <h1>Serial Configuration</h1>
+            <form method="POST">
+                <label for="serial_port">Serial Port:</label>
+                <select name="serial_port" id="serial_port">
+                    {%  for port, desc, selected in serial_devices %}
+                    <option value="{{ port }}"{{ selected }}>{{ port }} - {{ desc }}</option>
+                    {% endfor %}
+                </select>
+                <label for="baudrate">Baudrate:</label>
+                <input type="text" id="baudrate" name="baudrate" value="{{ baudrate }}" required>
+
+                <label for="timeout">Timeout:</label>
+                <input type="text" id="timeout" name="timeout" value="{{ timeout }}" required>
+
+                {%  if msg %}
+                    <button type="submit" disabled>{{ msg }}</button>
+                    {% else %}
+                    <button type="submit">Submit settings</button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</body>
+</html>
