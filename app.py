@@ -147,7 +147,15 @@ def set_filament():
         payload = set_ams_filament(filament_id, color, tray_id)
         return payload
 
-    return render_template('set_filament.html', filament_list=config['BAMBU_FILAMENT_LIST'])
+    custom_list = sorted(
+        [(key, value["name"].split('@')[0].strip()) for key, value in config['BAMBU_FILAMENT_LIST'].items() if
+         value.get("private")], key=lambda x: x[1])
+
+    system_list = sorted(
+        [(key, value["name"].split('@')[0].strip()) for key, value in config['BAMBU_FILAMENT_LIST'].items() if
+         not value.get("private")], key=lambda x: x[1])
+
+    return render_template('set_filament.html', custom_list=custom_list, system_list=system_list)
 
 
 @app.route('/api/qr-code', methods=['GET'])
@@ -219,6 +227,7 @@ def handle_mqtt_message(client, userdata, message):
                     break
             if not found_empty_tray:
                 config['BAMBU_EMPTY_TRAY_ID'] = 0
+            print(config['BAMBU_EMPTY_TRAY_ID'])
             save_config(config)
 
 

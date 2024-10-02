@@ -13,15 +13,20 @@
             <form method="POST">
                 <label for="filament_id">Filament ID:</label>
                 <select name="filament_id" id="filament_id">
-                    {%  for filament_id, data in filament_list.items() %}
-                    <option value="{{ filament_id }}">{{ data['name'] }}</option>
+                    <option disabled>--- Custom Filaments ---</option>
+                    {%  for filament in custom_list%}
+                    <option value="{{ filament[0] }}">{{ filament[1] }}</option>
+                    {% endfor %}
+                    <option disabled>--- System Filaments ---</option>
+                    {%  for filament in system_list %}
+                        <option value="{{ filament[0] }}">{{ filament[1] }}</option>
                     {% endfor %}
                 </select>
                 <label for="selected_filament_id">Selected Filament ID:</label>
                 <div id="selected_filament_id"></div>
                 <br>
                 <label for="qr-code">QR-Code:</label>
-                <img src="" id="qr-code" alt="QR Code" />
+                <a id="a-qr-code"><img src="" id="img-qr-code" alt="QR Code" /></a>
 
                 <label for="filament_color">Filament color (RRGGBBAA):</label>
                 <input type="text" id="filament_color" name="filament_color" value="000000FF" required>
@@ -37,7 +42,8 @@
     const selectElement = document.getElementById('filament_id');
     const valueDisplay = document.getElementById('selected_filament_id');
     const colorElement = document.getElementById('filament_color');
-    const imgElement = document.getElementById('qr-code')
+    const imgElement = document.getElementById('img-qr-code')
+    const aElement = document.getElementById('a-qr-code')
 
     function updateFilamentID() {
         valueDisplay.textContent = selectElement.value;
@@ -49,6 +55,7 @@
 
     function loadQRCode(filament_id, filament_color) {
         imgElement.src = '/api/qr-code?filament_id='+filament_id+'&filament_color='+filament_color;
+        aElement.href = '/api/qr-code?filament_id='+filament_id+'&filament_color='+filament_color;
     }
     updateFilamentID();
 </script>
