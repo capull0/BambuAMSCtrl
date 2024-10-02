@@ -128,7 +128,7 @@ def login():
         update_filament_settings()
         save_config(config)
 
-        return redirect(url_for('set_ams_filament'))
+        return redirect(url_for('set_filament'))
 
     return render_template('login.html')
 
