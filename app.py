@@ -27,7 +27,6 @@ default_config = {
     "BAMBU_API_URL": 'https://api.bambulab.com/v1',
     "BAMBU_ACCESS_TOKEN": "",
     "BAMBU_REFRESH_TOKEN": "",
-    "BAMBU_EMPTY_TRAY_ID": 0,
     'SERIAL_BAUDRATE': 9600,
     'SERIAL_TIMEOUT': 10,
     'SERIAL_PORT': "disabled",
@@ -86,7 +85,7 @@ if config['SERIAL_PORT'] != 'disabled':
 
 mqtt = Mqtt(app, connect_async=True)
 mqtt_connected = False
-
+empty_tray_id = 0
 
 @app.route('/')
 def index():
@@ -215,27 +214,24 @@ def handle_disconnect():
 
 @mqtt.on_message()
 def handle_mqtt_message(client, userdata, message):
+    global empty_tray_id
     msg = json.loads(message.payload.decode("utf-8"))
-    found_empty_tray = False
     if "print" in msg:
         data = msg['print']
         if "ams" in data and "ams" in data['ams']:
             for tray in data['ams']['ams'][0]['tray']:  # hardcoded ams_id = 0
                 if 'tray_info_idx' not in tray:
-                    config['BAMBU_EMPTY_TRAY_ID'] = int(tray['id']) + 1
-                    found_empty_tray = True
+                    empty_tray_id = int(tray['id']) + 1
                     break
-            if not found_empty_tray:
-                config['BAMBU_EMPTY_TRAY_ID'] = 0
-            print(config['BAMBU_EMPTY_TRAY_ID'])
-            save_config(config)
+            print(empty_tray_id)
 
 
 def set_ams_filament(filament_id, color, tray_id):
+    global empty_tray_id
     filament_setting = get_slicer_setting(config['BAMBU_FILAMENT_LIST'][filament_id]['setting_id'])
 
-    if tray_id == 0 and config['BAMBU_EMPTY_TRAY_ID'] > 0:
-        tray_id = config['BAMBU_EMPTY_TRAY_ID']
+    if tray_id == 0 and empty_tray_id > 0:
+        tray_id = empty_tray_id
     tray_id -= 1
 
     if config['BAMBU_FILAMENT_LIST'][filament_id]['private']:
@@ -253,13 +249,14 @@ def set_ams_filament(filament_id, color, tray_id):
             "ams_id": 0,  # hardcoded ams_id = 0
             "tray_id": int(tray_id),
             "tray_info_idx": filament_id,
-            "tray_color": color.upper(),
+            "tray_color": color.lstrip('#').upper()+'FF',
             "nozzle_temp_min": nozzle_temp_min,
             "nozzle_temp_max": nozzle_temp_max,
             "tray_type": filament_type,
         }
     }
     publish_request(payload)
+    empty_tray_id = 0
     return payload
 
 def bambu_request(type, uri):

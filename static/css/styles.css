@@ -53,6 +53,11 @@ input, select {
     width: 100%;
 }
 
+input[type="color"] {
+    padding: 2px;
+    height: 50px;
+}
+
 input:focus, select:focus {
     border-color: #2e5631;
 }
