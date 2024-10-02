@@ -179,8 +179,7 @@ def serial_config():
             selected = ""
         serial_devices.append((port.device, port.description, selected))
     return render_template('serial.html', serial_devices=serial_devices,
-                           enabled=config['SERIAL_ENABLED'], baudrate=config['SERIAL_BAUDRATE'],
-                           timeout=config['SERIAL_TIMEOUT'], msg=msg)
+                           baudrate=config['SERIAL_BAUDRATE'], timeout=config['SERIAL_TIMEOUT'], msg=msg)
 
 
 @mqtt.on_connect()
